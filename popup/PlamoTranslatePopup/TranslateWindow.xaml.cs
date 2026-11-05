@@ -11,11 +11,20 @@ namespace PlamoTranslatePopup;
 public partial class TranslateWindow : Window
 {
     private System.Windows.Threading.DispatcherTimer? _autoCloseTimer;
+    private TimeSpan _autoCloseDelay = TimeSpan.FromSeconds(30);
 
     public TranslateWindow()
     {
         InitializeComponent();
         ContentRendered += TranslateWindow_ContentRendered;
+
+        // カーソルが乗っている間は自動クローズしない
+        MouseEnter += (_, _) => _autoCloseTimer?.Stop();
+        MouseLeave += (_, _) =>
+        {
+            if (IsLoaded)
+                RestartAutoCloseTimer();
+        };
     }
 
     /// <summary>カーソルの近くに表示する(結果は後で SetResult で差し込む)</summary>
@@ -30,6 +39,7 @@ public partial class TranslateWindow : Window
         Top = dipY + 12;
         Show();
 
+        _autoCloseDelay = TimeSpan.FromSeconds(Math.Max(1, App.CurrentSettings.AutoCloseSeconds));
         StartAutoCloseTimer();
     }
 
@@ -44,12 +54,8 @@ public partial class TranslateWindow : Window
         Top = dipY + 12;
         Show();
 
-        _autoCloseTimer = new System.Windows.Threading.DispatcherTimer
-        {
-            Interval = TimeSpan.FromSeconds(2.5)
-        };
-        _autoCloseTimer.Tick += (_, _) => Close();
-        _autoCloseTimer.Start();
+        _autoCloseDelay = TimeSpan.FromSeconds(2.5);
+        StartAutoCloseTimer();
     }
 
     public void SetResult(string text)
@@ -78,13 +84,12 @@ public partial class TranslateWindow : Window
 
     private void StartAutoCloseTimer()
     {
-        var seconds = App.CurrentSettings.AutoCloseSeconds;
-        if (seconds <= 0)
+        if (_autoCloseDelay <= TimeSpan.Zero)
             return;
 
         _autoCloseTimer = new System.Windows.Threading.DispatcherTimer
         {
-            Interval = TimeSpan.FromSeconds(seconds)
+            Interval = _autoCloseDelay
         };
         _autoCloseTimer.Tick += (_, _) => Close();
         _autoCloseTimer.Start();

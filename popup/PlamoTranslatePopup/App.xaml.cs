@@ -55,6 +55,13 @@ public partial class App : Application
             return;
         }
 
+        // --selection: 選択テキストの取得→翻訳を1回だけ実行して終了(テスト用)
+        if (e.Args.Any(a => string.Equals(a, "--selection", StringComparison.OrdinalIgnoreCase)))
+        {
+            RunSelectionTestAsync();
+            return;
+        }
+
         // --ocr x,y,w,h : 指定領域をOCR翻訳してポップアップし即終了(テスト/CLI用)
         var ocrIndex = Array.FindIndex(e.Args, a => string.Equals(a, "--ocr", StringComparison.OrdinalIgnoreCase));
         if (ocrIndex >= 0 && ocrIndex + 1 < e.Args.Length)
@@ -128,15 +135,7 @@ public partial class App : Application
         _busy = true;
         try
         {
-            var selected = await _clipboard.GetSelectedTextAsync(_keyboard);
-            Log($"選択テキスト: {(string.IsNullOrEmpty(selected) ? "なし" : $"{selected.Length}文字: {selected[..Math.Min(30, selected.Length)]}")} / フォアグラウンド: {GetForegroundDescription()}");
-            if (string.IsNullOrWhiteSpace(selected))
-            {
-                ShowHint("選択文字列が取得できませんでした。テキストを選択してから実行してください。");
-                return;
-            }
-
-            await TranslateAndShowAsync(selected);
+            await SelectionTranslateCoreAsync();
         }
         catch (Exception ex)
         {
@@ -146,6 +145,33 @@ public partial class App : Application
         finally
         {
             _busy = false;
+        }
+    }
+
+    /// <summary>選択テキストを取得して翻訳し、ポップアップ表示。表示したウィンドウを返す</summary>
+    private async Task<TranslateWindow> SelectionTranslateCoreAsync()
+    {
+        var selected = await _clipboard.GetSelectedTextAsync(_keyboard);
+        Log($"選択テキスト: {(string.IsNullOrEmpty(selected) ? "なし" : $"{selected.Length}文字: {selected[..Math.Min(30, selected.Length)]}")} / フォアグラウンド: {GetForegroundDescription()}");
+        if (string.IsNullOrWhiteSpace(selected))
+            return ShowHint("選択文字列が取得できませんでした。テキストを選択してから実行してください。");
+
+        return await TranslateAndShowAsync(selected);
+    }
+
+    /// <summary>--selection モード: 選択テキストの取得→翻訳を1回実行して終了(テスト用)</summary>
+    private async void RunSelectionTestAsync()
+    {
+        Log("--selection モード起動");
+        try
+        {
+            var popup = await SelectionTranslateCoreAsync();
+            popup.Closed += (_, _) => Shutdown();
+        }
+        catch (Exception ex)
+        {
+            Log($"エラー: {ex.Message}");
+            Shutdown(1);
         }
     }
 
