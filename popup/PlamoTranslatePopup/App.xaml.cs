@@ -13,6 +13,7 @@ namespace PlamoTranslatePopup;
 /// トレイ常駐 + グローバルホットキーで翻訳するアプリ。
 /// - Ctrl+Alt+T: 選択中テキストを翻訳してカーソル近くに表示
 /// - Ctrl+Alt+O: 画面の一部を範囲選択して OCR → 翻訳して表示
+/// いずれのモードでもプロセス終了時に llama-server を停止する。
 /// </summary>
 public partial class App : Application
 {
@@ -38,7 +39,6 @@ public partial class App : Application
     private LlamaTranslateService? _translator;
     private OcrService? _ocr;
     private bool _busy;
-    private bool _residentMode;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -64,7 +64,6 @@ public partial class App : Application
         }
 
         // 隠しウィンドウ経由でホットキーを受け取る
-        _residentMode = true;
         _hotkey = new HotkeyService();
         RegisterHotkeySafe(HotkeyService.MOD_CONTROL | HotkeyService.MOD_ALT | HotkeyService.MOD_NOREPEAT,
             0x54 /* 'T' */, HotkeyTranslateId, "Ctrl+Alt+T (選択翻訳)");
@@ -76,18 +75,6 @@ public partial class App : Application
         _notifyIcon = new NotifyIconService("PLaMo翻訳ポップアップ (Ctrl+Alt+T / Ctrl+Alt+O)");
         _notifyIcon.ContextMenuRequested += ShowTrayMenu;
         _notifyIcon.LeftClick += ShowTrayMenu;
-
-        // --exit-after N : N 秒後に自動終了(終了処理のテスト用)
-        var exitIndex = Array.FindIndex(e.Args, a => string.Equals(a, "--exit-after", StringComparison.OrdinalIgnoreCase));
-        if (exitIndex >= 0 && exitIndex + 1 < e.Args.Length && int.TryParse(e.Args[exitIndex + 1], out var exitSeconds))
-        {
-            var timer = new System.Windows.Threading.DispatcherTimer
-            {
-                Interval = TimeSpan.FromSeconds(exitSeconds)
-            };
-            timer.Tick += (_, _) => Shutdown();
-            timer.Start();
-        }
     }
 
     private void RegisterHotkeySafe(uint modifiers, uint virtualKey, int id, string description)
@@ -139,42 +126,22 @@ public partial class App : Application
     {
         Log("ホットキー検知: 選択翻訳");
         _busy = true;
-        TranslateWindow? popup = null;
         try
         {
             var selected = await _clipboard.GetSelectedTextAsync(_keyboard);
             Log($"選択テキスト: {(string.IsNullOrEmpty(selected) ? "なし" : $"{selected.Length}文字: {selected[..Math.Min(30, selected.Length)]}")} / フォアグラウンド: {GetForegroundDescription()}");
             if (string.IsNullOrWhiteSpace(selected))
             {
-                new TranslateWindow().ShowHintAtCursor("選択文字列が取得できませんでした。テキストを選択してから実行してください。");
+                ShowHint("選択文字列が取得できませんでした。テキストを選択してから実行してください。");
                 return;
             }
 
-            var sourceLang = LlamaTranslateService.DetectLanguage(selected);
-            var targetLang = sourceLang == "ja" ? "en" : "ja";
-            if (sourceLang == targetLang)
-                return;
-
-            popup = new TranslateWindow();
-            popup.ShowAtCursor(sourceLang, targetLang);
-
-            var started = await _translator!.EnsureServerRunningAsync();
-            if (!started)
-            {
-                popup.SetResult(
-                    "llama-server を起動できませんでした。\n" +
-                    "serverUrl / modelRoot の設定 (popup.json) を確認してください。");
-                return;
-            }
-
-            var translated = await _translator.TranslateAsync(selected, sourceLang, targetLang);
-            Log($"翻訳完了: {translated[..Math.Min(50, translated.Length)]}");
-            popup.SetResult(translated);
+            await TranslateAndShowAsync(selected);
         }
         catch (Exception ex)
         {
             Log($"エラー: {ex.Message}");
-            popup?.SetResult($"翻訳中にエラーが発生しました:\n{ex.Message}");
+            ShowHint($"翻訳中にエラーが発生しました:\n{ex.Message}");
         }
         finally
         {
@@ -192,12 +159,11 @@ public partial class App : Application
             if (_ocr is null || !_ocr.IsAvailable)
             {
                 Log("OCR: エンジン利用不可");
-                new TranslateWindow().ShowHintAtCursor("OCR エンジンが利用できません。\nWindows の OCR 言語パック(日本語)を確認してください。");
+                ShowHint("OCR エンジンが利用できません。\nWindows の OCR 言語パック(日本語)を確認してください。");
                 return;
             }
 
-            var selector = new RegionSelectWindow();
-            var region = await selector.SelectRegionAsync();
+            var region = await new RegionSelectWindow().SelectRegionAsync();
             Log($"OCR: 領域選択 {(region is null ? "キャンセル" : $"{region.Value.X},{region.Value.Y} {region.Value.Width}x{region.Value.Height}")}");
             if (region is null)
                 return;
@@ -207,7 +173,7 @@ public partial class App : Application
         catch (Exception ex)
         {
             Log($"OCRエラー: {ex.Message}");
-            new TranslateWindow().ShowHintAtCursor($"OCR 処理でエラーが発生しました:\n{ex.Message}");
+            ShowHint($"OCR 処理でエラーが発生しました:\n{ex.Message}");
         }
         finally
         {
@@ -215,20 +181,23 @@ public partial class App : Application
         }
     }
 
-    /// <summary>領域をキャプチャして OCR → 翻訳 → ポップアップ表示まで行う</summary>
-    private async Task OcrTranslateCoreAsync(ScreenRegion region)
+    /// <summary>領域をキャプチャして OCR → 翻訳 → ポップアップ表示。表示したウィンドウを返す</summary>
+    private async Task<TranslateWindow> OcrTranslateCoreAsync(ScreenRegion region)
     {
         using var captured = _screenCapture.CaptureRegion(region);
         var ocrText = await _ocr!.RecognizeAsync(captured);
         Log($"OCR結果: {(string.IsNullOrEmpty(ocrText) ? "空" : $"{ocrText.Length}文字: {ocrText[..Math.Min(30, ocrText.Length)]}")}");
 
         if (string.IsNullOrWhiteSpace(ocrText))
-        {
-            new TranslateWindow().ShowHintAtCursor("文字を認識できませんでした。");
-            return;
-        }
+            return ShowHint("文字を認識できませんでした。");
 
-        var sourceLang = LlamaTranslateService.DetectLanguage(ocrText);
+        return await TranslateAndShowAsync(ocrText);
+    }
+
+    /// <summary>テキストの言語を判定して翻訳し、カーソル近くにポップアップ表示。表示したウィンドウを返す</summary>
+    private async Task<TranslateWindow> TranslateAndShowAsync(string text)
+    {
+        var sourceLang = LlamaTranslateService.DetectLanguage(text);
         var targetLang = sourceLang == "ja" ? "en" : "ja";
 
         var popup = new TranslateWindow();
@@ -240,18 +209,24 @@ public partial class App : Application
             popup.SetResult(
                 "llama-server を起動できませんでした。\n" +
                 "serverUrl / modelRoot の設定 (popup.json) を確認してください。");
-            return;
+            return popup;
         }
 
-        var translated = await _translator.TranslateAsync(ocrText, sourceLang, targetLang);
+        var translated = await _translator.TranslateAsync(text, sourceLang, targetLang);
         Log($"翻訳完了: {translated[..Math.Min(50, translated.Length)]}");
         popup.SetResult(translated);
+        return popup;
     }
 
-    /// <summary>
-    /// --trigger モード: クリップボードの内容を翻訳してカーソル近くに表示し、
-    /// 自動クローズ後にプロセスごと終了する(テスト/CLI 用)。
-    /// </summary>
+    /// <summary>短いメッセージをカーソル近くに表示する(フィードバック用)。表示したウィンドウを返す</summary>
+    private static TranslateWindow ShowHint(string message)
+    {
+        var hint = new TranslateWindow();
+        hint.ShowHintAtCursor(message);
+        return hint;
+    }
+
+    /// <summary>--trigger モード: クリップボードの内容を翻訳して表示し、自動クローズ後に終了</summary>
     private async void RunTriggerModeAsync()
     {
         Log("--trigger モード起動");
@@ -259,32 +234,14 @@ public partial class App : Application
         {
             var text = _clipboard.GetText();
             Log($"クリップボード: {(string.IsNullOrEmpty(text) ? "なし" : $"{text.Length}文字: {text[..Math.Min(30, text.Length)]}")}");
-            if (string.IsNullOrWhiteSpace(text) || _translator is null)
+            if (string.IsNullOrWhiteSpace(text))
             {
                 Shutdown(1);
                 return;
             }
 
-            var sourceLang = LlamaTranslateService.DetectLanguage(text);
-            var targetLang = sourceLang == "ja" ? "en" : "ja";
-
-            var popup = new TranslateWindow();
-            popup.ShowAtCursor(sourceLang, targetLang);
+            var popup = await TranslateAndShowAsync(text);
             popup.Closed += (_, _) => Shutdown();
-
-            var started = await _translator.EnsureServerRunningAsync();
-            if (!started)
-            {
-                popup.SetResult(
-                    "llama-server を起動できませんでした。\n" +
-                    "serverUrl / modelRoot の設定 (popup.json) を確認してください。");
-            }
-            else
-            {
-                var translated = await _translator.TranslateAsync(text, sourceLang, targetLang);
-                Log($"翻訳完了: {translated[..Math.Min(50, translated.Length)]}");
-                popup.SetResult(translated);
-            }
         }
         catch (Exception ex)
         {
@@ -293,10 +250,7 @@ public partial class App : Application
         }
     }
 
-    /// <summary>
-    /// --ocr x,y,w,h モード: 指定領域(物理ピクセル)を OCR 翻訳して表示し、
-    /// 自動クローズ後にプロセスごと終了する(テスト/CLI 用)。
-    /// </summary>
+    /// <summary>--ocr x,y,w,h モード: 指定領域(物理ピクセル)を OCR 翻訳して表示し、自動クローズ後に終了</summary>
     private async void RunOcrRegionModeAsync(string regionArg)
     {
         Log($"--ocr モード起動: {regionArg}");
@@ -313,7 +267,7 @@ public partial class App : Application
                 return;
             }
 
-            var popup = await RunOcrRegionCoreAsync(new ScreenRegion(x, y, w, h));
+            var popup = await OcrTranslateCoreAsync(new ScreenRegion(x, y, w, h));
             popup.Closed += (_, _) => Shutdown();
         }
         catch (Exception ex)
@@ -321,41 +275,6 @@ public partial class App : Application
             Log($"エラー: {ex.Message}");
             Shutdown(1);
         }
-    }
-
-    private async Task<TranslateWindow> RunOcrRegionCoreAsync(ScreenRegion region)
-    {
-        using var captured = _screenCapture.CaptureRegion(region);
-        var ocrText = await _ocr!.RecognizeAsync(captured);
-        Log($"OCR結果: {(string.IsNullOrEmpty(ocrText) ? "空" : $"{ocrText.Length}文字: {ocrText[..Math.Min(30, ocrText.Length)]}")}");
-
-        var sourceLang = string.IsNullOrWhiteSpace(ocrText)
-            ? "ja"
-            : LlamaTranslateService.DetectLanguage(ocrText);
-        var targetLang = sourceLang == "ja" ? "en" : "ja";
-
-        var popup = new TranslateWindow();
-        popup.ShowAtCursor(sourceLang, targetLang);
-
-        if (string.IsNullOrWhiteSpace(ocrText))
-        {
-            popup.SetResult("文字を認識できませんでした。");
-            return popup;
-        }
-
-        var started = await _translator!.EnsureServerRunningAsync();
-        if (!started)
-        {
-            popup.SetResult(
-                "llama-server を起動できませんでした。\n" +
-                "serverUrl / modelRoot の設定 (popup.json) を確認してください。");
-            return popup;
-        }
-
-        var translated = await _translator.TranslateAsync(ocrText, sourceLang, targetLang);
-        Log($"翻訳完了: {translated[..Math.Min(50, translated.Length)]}");
-        popup.SetResult(translated);
-        return popup;
     }
 
     /// <summary>ホットキー押下時のフォアグラウンドウィンドウの概要(診断用)</summary>
@@ -396,9 +315,8 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        // 常駐モードで終了する際は llama-server も停止して VRAM を解放する
-        // (--trigger / --ocr の単発モードでは既存サーバーを残す)
-        if (_residentMode && _translator is { } t)
+        // 終了時に llama-server を停止して VRAM を解放する(常駐・単発モード共通)
+        if (_translator is { } t)
         {
             var stopped = t.StopServer();
             Log($"終了: llama-server を停止しました ({stopped} プロセス)");

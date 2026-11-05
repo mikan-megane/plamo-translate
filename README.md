@@ -1,12 +1,11 @@
 # plamo-translate
 
-[PLaMo 3 Translate 2B](https://huggingface.co/pfnet/plamo-3-translate-2b-GGUF) (GGUF Q4_K_M) + llama.cpp を使った日⇔英翻訳CLI。
+[PLaMo 3 Translate 2B](https://huggingface.co/pfnet/plamo-3-translate-2b-GGUF) (GGUF Q4_K_M) + llama.cpp を使った日⇔英翻訳ツール集。
 
 ## 構成
 
-- `translate.py` — メインCLI(llama-server と通信、標準ライブラリのみで動作)
-- `translate_transformers.py` — transformers 版(0.8B BF16、比較・退避用)
-- `popup/` — 選択テキスト翻訳ポップアップアプリ(WPF、exe 直接実行)
+- `translate.py` — 翻訳CLI(llama-server と通信、標準ライブラリのみで動作)
+- `popup/` — 選択テキスト翻訳・画面OCR翻訳ポップアップアプリ(WPF、exe 直接実行)
 - `llama-bin/` — llama.cpp CUDA ビルド(b12121)
 - `models/` — モデルファイル(GGUF)
 
@@ -64,7 +63,7 @@ Windows 常駐アプリ(.NET 8 WPF、シングルファイル自己完結 exe)�
 選択テキストは Ctrl+C 送信で一時取得し、翻訳後にクリップボードへ復元します。
 llama-server が未起動なら自動起動します(ポップアップ表示に数秒かかります)。
 トレイアイコン(青地に「訳」)の右クリック → 「終了」で終了します。
-**終了時に llama-server も停止して VRAM を解放します**(単発モード `--trigger` / `--ocr` では既存サーバーを残します)。
+**アプリの終了時(常駐・単発モード問わず)に llama-server を停止して VRAM を解放します。**
 
 OCR は Windows 内蔵の `Windows.Media.Ocr` を使用します(外部依存なし。
 日本語 OCR 言語パックが必要: 設定 → 时計と言語 → 言語と地域)。
@@ -97,14 +96,6 @@ dotnet publish popup/PlamoTranslatePopup/PlamoTranslatePopup.csproj -c Release -
 ```
 
 約68MBの単一exe(`popup/dist/PlamoTranslatePopup.exe`)が生成されます。
-
-## transformers 版を使う場合
-
-```bash
-pip install -U torch --index-url https://download.pytorch.org/whl/cu126
-pip install -U transformers accelerate numba
-python translate_transformers.py "会議は来週の月曜日に変更されました。"
-```
 
 ## ライセンス
 

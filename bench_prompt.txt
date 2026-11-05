@@ -1,1 +1,0 @@
-<|plamo:tag|>dataset<|plamo:msg|>translation<|plamo:tag|>input<|plamo:msg|>PLaMo 3 Translate は、Preferred Networks が開発した翻訳に特化した大規模言語モデルです。53 言語間の翻訳を高品質に行うことができます。翻訳品質を保ちながら、日本語と英語の相互変換を高速に処理します。<|plamo:tag|>output<|plamo:key|>lang<|plamo:val|>en<|plamo:msg|>
