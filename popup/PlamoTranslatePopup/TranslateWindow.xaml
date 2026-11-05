@@ -33,8 +33,11 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <!-- ヘッダー: 方向ラベル + 閉じるボタン -->
-            <DockPanel Grid.Row="0" LastChildFill="False">
+            <!-- ヘッダー: 方向ラベル(ドラッグ移動) + 閉じるボタン -->
+            <DockPanel Grid.Row="0" LastChildFill="False"
+                       Background="Transparent"
+                       Cursor="SizeAll"
+                       MouseLeftButtonDown="Header_MouseLeftButtonDown">
                 <TextBlock x:Name="DirectionText"
                            Text="ja → en"
                            FontSize="11"

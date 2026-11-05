@@ -1,31 +1,125 @@
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Interop;
 using PlamoTranslatePopup.Utilities;
 
 namespace PlamoTranslatePopup;
 
 /// <summary>
 /// カーソル近くに表示する翻訳結果ポップアップ。
-/// 一定時間後または閉じる操作で自動的に消える。
+/// - 通常は設定の透明度で表示し、ホバー中は不透明にして読みやすくする
+/// - 一定時間後または閉じる操作で自動的に消える(ホバー中は閉じない)
+/// - タイトル部分をドラッグして移動できる
+/// - ポップアップの外をクリックすると閉じる
 /// </summary>
 public partial class TranslateWindow : Window
 {
+    private const int WH_MOUSE_LL = 14;
+    private const long WM_LBUTTONDOWN = 0x0201;
+    private const long WM_RBUTTONDOWN = 0x0204;
+
+    private delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelMouseProc lpfn, IntPtr hMod, uint dwThreadId);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool UnhookWindowsHookEx(IntPtr hhk);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GetModuleHandle(string? lpModuleName);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MSLLHOOKSTRUCT
+    {
+        public POINT pt;
+        public uint mouseData;
+        public uint flags;
+        public uint time;
+        public UIntPtr dwExtraInfo;
+    }
+
     private System.Windows.Threading.DispatcherTimer? _autoCloseTimer;
     private TimeSpan _autoCloseDelay = TimeSpan.FromSeconds(30);
+    private double _baseOpacity = 1.0;
+    private IntPtr _mouseHook = IntPtr.Zero;
+    private readonly LowLevelMouseProc _mouseHookProc;
 
     public TranslateWindow()
     {
         InitializeComponent();
         ContentRendered += TranslateWindow_ContentRendered;
-        Opacity = Math.Clamp(App.CurrentSettings.PopupOpacity, 0.3, 1.0);
 
-        // カーソルが乗っている間は自動クローズしない
-        MouseEnter += (_, _) => _autoCloseTimer?.Stop();
+        _baseOpacity = Math.Clamp(App.CurrentSettings.PopupOpacity, 0.3, 1.0);
+        Opacity = _baseOpacity;
+
+        // ホバー中は不透明にして読みやすくし、自動クローズも止める
+        MouseEnter += (_, _) =>
+        {
+            Opacity = 1.0;
+            _autoCloseTimer?.Stop();
+        };
         MouseLeave += (_, _) =>
         {
             if (IsLoaded)
+            {
+                Opacity = _baseOpacity;
                 RestartAutoCloseTimer();
+            }
         };
+
+        // ポップアップの外をクリックしたら閉じる(低レベルマウスフックで検知)
+        _mouseHookProc = MouseHookProc;
+        SourceInitialized += (_, _) =>
+            _mouseHook = SetWindowsHookEx(WH_MOUSE_LL, _mouseHookProc, GetModuleHandle(null), 0);
+    }
+
+    private IntPtr MouseHookProc(int nCode, IntPtr wParam, IntPtr lParam)
+    {
+        if (nCode >= 0 && IsLoaded
+            && (wParam.ToInt64() == WM_LBUTTONDOWN || wParam.ToInt64() == WM_RBUTTONDOWN)
+            && !IsCursorOverWindow())
+        {
+            Dispatcher.BeginInvoke(Close);
+        }
+        return CallNextHookEx(_mouseHook, nCode, wParam, lParam);
+    }
+
+    /// <summary>カーソルがこのウィンドウの上にあるか</summary>
+    private bool IsCursorOverWindow()
+    {
+        if (ActualWidth <= 0 || ActualHeight <= 0)
+            return false;
+
+        var (dipX, dipY) = CursorUtilities.GetCursorDipPosition();
+        return dipX >= Left && dipX <= Left + ActualWidth
+            && dipY >= Top && dipY <= Top + ActualHeight;
+    }
+
+    /// <summary>タイトル部分をドラッグして移動する</summary>
+    private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.Handled)
+            return;
+        try
+        {
+            DragMove();
+        }
+        catch
+        {
+            // マウスボタンが既に離れていた場合は無視
+        }
     }
 
     /// <summary>カーソルの近くに表示する(結果は後で SetResult で差し込む)</summary>
@@ -61,10 +155,10 @@ public partial class TranslateWindow : Window
         StartAutoCloseTimer();
     }
 
+    /// <summary>翻訳結果を差し込む。ウィンドウ位置は変えない(ユーザーが動かした位置も保持)</summary>
     public void SetResult(string text)
     {
         ResultBox.Text = text;
-        RepositionNearCursor();
         RestartAutoCloseTimer();
     }
 
@@ -73,6 +167,7 @@ public partial class TranslateWindow : Window
         RepositionNearCursor();
     }
 
+    /// <summary>画面からはみ出ないよう位置を補正する(初回表示時のみ)</summary>
     private void RepositionNearCursor()
     {
         if (ActualWidth <= 0 || ActualHeight <= 0)
@@ -108,6 +203,13 @@ public partial class TranslateWindow : Window
     {
         _autoCloseTimer?.Stop();
         _autoCloseTimer = null;
+
+        if (_mouseHook != IntPtr.Zero)
+        {
+            UnhookWindowsHookEx(_mouseHook);
+            _mouseHook = IntPtr.Zero;
+        }
+
         base.OnClosed(e);
     }
 

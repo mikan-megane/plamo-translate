@@ -1,50 +1,12 @@
 # plamo-translate
 
-[PLaMo 3 Translate 2B](https://huggingface.co/pfnet/plamo-3-translate-2b-GGUF) (GGUF Q4_K_M) + llama.cpp を使った日⇔英翻訳ツール集。
+[PLaMo 3 Translate 2B](https://huggingface.co/pfnet/plamo-3-translate-2b-GGUF) (GGUF Q4_K_M) + llama.cpp を使った日⇔英翻訳ポップアップアプリ。
 
 ## 構成
 
-- `translate.py` — 翻訳CLI(llama-server と通信、標準ライブラリのみで動作)
 - `popup/` — 選択テキスト翻訳・画面OCR翻訳ポップアップアプリ(WPF、exe 直接実行)
 - `llama-bin/` — llama.cpp CUDA ビルド(b12121)
 - `models/` — モデルファイル(GGUF)
-
-## 使い方
-
-```bash
-# 日本語 → 英語 (言語は自動判定)
-python translate.py "会議は来週の月曜日に変更されました。"
-
-# 英語 → 日本語
-python translate.py "The meeting has been rescheduled for next Monday."
-
-# 言語を明示的に指定
-python translate.py --source ja --target en "こんにちは"
-
-# ファイルを翻訳
-python translate.py --file input.txt
-
-# 標準入力から
-echo "こんにちは" | python translate.py
-```
-
-llama-server が未起動のときは自動で起動します(初回のみ数秒待ち)。
-
-### サーバー管理
-
-```bash
-python translate.py --server start    # 明示的に起動
-python translate.py --server stop     # 停止
-python translate.py --server status   # 状態確認
-```
-
-## 性能 (RTX 3070 実測)
-
-| 指標 | 値 |
-|---|---|
-| 翻訳1文の応答 | 0.4〜0.8 秒 |
-| 生成速度 | 約60〜95 tok/s |
-| VRAM消費(常駐時) | 約2.1 GB |
 
 ## 翻訳ポップアップアプリ (`popup/`)
 
@@ -58,13 +20,22 @@ Windows 常駐アプリ(.NET 8 WPF、シングルファイル自己完結 exe)�
 1. `popup\dist\PlamoTranslatePopup.exe` をダブルクリックして起動(タスクトレイに常駐)
 2. 任意のアプリでテキストを選択した状態で `Ctrl+F7`
    - または `Ctrl+F9` → ドラッグで画面の範囲を選択(Esc でキャンセル)
-3. カーソル付近にポップアップ表示(既定 30秒で自動クローズ。ホバー中は閉じない)
+3. カーソル付近にポップアップ表示(既定 30秒で自動クローズ)
 
-選択テキストは Ctrl+C 送信で一時取得し、翻訳後にクリップボードへ復元します。
-llama-server が未起動なら自動起動します(ポップアップ表示に数秒かかります)。
+### ポップアップの操作
+
+- **外をクリック**すると閉じる
+- **タイトル部分(言語方向ラベル)をドラッグ**して移動できる
+- **マウスを乗せると不透明**になり読みやすくなる(離すと設定の透明度に戻る)
+- ホバー中は自動クローズしない
+- 翻訳完了時に位置は動かない(表示された位置にそのまま結果が出る)
+
 トレイアイコン(青地に「訳」)が見つからない場合は、タスクバー右端の
 「^」(**隠れたアイコン**)の中を確認してください。そこからドラッグすると
 タスクバーに常時表示できます。
+
+選択テキストは Ctrl+C 送信で一時取得し、翻訳後にクリップボードへ復元します。
+llama-server が未起動なら自動起動します(ポップアップ表示に数秒かかります)。
 トレイアイコンの右クリック → 「設定...」で設定画面、「終了」で終了します。
 **アプリの終了時(常駐・単発モード問わず)に llama-server を停止して VRAM を解放します。**
 
@@ -78,7 +49,7 @@ OCR は Windows 内蔵の `Windows.Media.Ocr` を使用します(外部依存な
 
 - ショートカットキー(選択翻訳 / OCR翻訳): ボックスをクリックしてキーを押すと記録
 - 自動で閉じる秒数: 0 で自動的に閉じなくなる
-- 不透明度: 30〜100%
+- 不透明度: 30〜100%(通常時の値。ホバー中は常に不透明)
 
 ### 設定 (`popup.json`)
 
@@ -97,9 +68,15 @@ exe と同じフォルダに置くと既定値を上書きできます(dist 版�
 キーの書式: `Ctrl+Alt+Shift+Win+キー名`(例: `Ctrl+Shift+T`, `Alt+F9`, `Ctrl+1`)。
 F12 と単独の修飾キーは登録できません。他アプリと競合するキーは保存時に拒否されます。
 
-動作ログは `%TEMP%\plamo-popup.log` に出力されます。
+## 性能 (RTX 3070 実測)
 
-CLI/テスト用の起動モード:
+| 指標 | 値 |
+|---|---|
+| 翻訳1文の応答 | 0.4〜0.8 秒 |
+| 生成速度 | 約60〜95 tok/s |
+| VRAM消費(常駐時) | 約2.1 GB |
+
+## テスト用の起動モード
 
 ```bash
 PlamoTranslatePopup.exe --settings       # 設定画面だけを開いて終了
@@ -107,7 +84,17 @@ PlamoTranslatePopup.exe --trigger        # クリップボードの内容を翻�
 PlamoTranslatePopup.exe --ocr 300,300,900,200  # 指定領域(物理ピクセル)をOCR翻訳して表示し終了
 ```
 
-### ビルド
+動作ログは `%TEMP%\plamo-popup.log` に出力されます。
+
+## llama-server を手動で起動する場合
+
+通常はホットキー実行時に自動起動・終了時に自動停止します。
+
+```bash
+llama-bin\llama-server.exe -m models\plamo-3-translate-2b-Q4_K_M.gguf -c 8192 --port 8080 --host 127.0.0.1
+```
+
+## ビルド
 
 ```bash
 dotnet publish popup/PlamoTranslatePopup/PlamoTranslatePopup.csproj -c Release -r win-x64 `

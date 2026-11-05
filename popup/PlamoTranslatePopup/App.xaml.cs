@@ -89,17 +89,6 @@ public partial class App : Application
         _notifyIcon = new NotifyIconService(BuildTrayTooltip());
         _notifyIcon.ContextMenuRequested += ShowTrayMenu;
         _notifyIcon.LeftClick += ShowTrayMenu;
-
-        // Windows 11 ではトレイアイコンが「隠れたアイコン」(^) に入るため初回のみ案内する
-        if (!CurrentSettings.TrayHintShown)
-        {
-            _notifyIcon.ShowBalloon(
-                "PLaMo翻訳ポップアップ",
-                "トレイに常駐しました。アイコンが見つからない場合は、タスクバー右端の「^」(隠れたアイコン)を開いてください。\n" +
-                "そこからドラッグすると常に表示できます。");
-            CurrentSettings.TrayHintShown = true;
-            CurrentSettings.Save();
-        }
     }
 
     private string BuildTrayTooltip() =>

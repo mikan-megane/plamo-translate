@@ -51,13 +51,6 @@ public sealed class NotifyIconService : IDisposable
     public void UpdateTooltip(string tooltip) =>
         _notifyIcon.Text = ClampTooltip(tooltip);
 
-    public void ShowBalloon(string title, string message, int timeoutMs = 8000)
-    {
-        _notifyIcon.BalloonTipTitle = title;
-        _notifyIcon.BalloonTipText = message;
-        _notifyIcon.ShowBalloonTip(timeoutMs);
-    }
-
     /// <summary>右クリックで自動表示されるメニューを差し替える</summary>
     public void ShowContextMenu(ContextMenuStrip menu) =>
         _notifyIcon.ContextMenuStrip = menu;
