@@ -83,6 +83,29 @@
                        Text="95%" VerticalAlignment="Center" FontSize="12" />
         </Grid>
 
+        <TextBlock Text="サーバー"
+                   FontWeight="SemiBold" FontSize="13" Margin="0,18,0,8" />
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="130" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="56" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="34" />
+            </Grid.RowDefinitions>
+
+            <TextBlock Text="放置したら自動終了" VerticalAlignment="Center" />
+            <TextBox x:Name="IdleTimeoutBox"
+                     Grid.Column="1"
+                     Width="70" HorizontalAlignment="Left"
+                     Height="28" VerticalContentAlignment="Center"
+                     TextAlignment="Center" />
+            <TextBlock Grid.Column="1" Margin="80,0,0,0"
+                       Text="秒 (0 = 自動終了しない)"
+                       VerticalAlignment="Center" FontSize="12" Foreground="#606060" />
+        </Grid>
+
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
             <Button Content="保存" Width="84" Height="28" IsDefault="True" Click="Save_Click" />
             <Button Content="キャンセル" Width="84" Height="28" Margin="8,0,0,0" IsCancel="True" />

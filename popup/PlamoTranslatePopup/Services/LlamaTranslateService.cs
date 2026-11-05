@@ -131,9 +131,10 @@ public sealed class LlamaTranslateService
     {
         var payload = JsonSerializer.Serialize(new
         {
+            // 長文でも止まらないよう出力上限を広めに取る(コンテキスト 8192 内)
             prompt = BuildPrompt(text, sourceLang, targetLang),
             temperature = 0,
-            max_tokens = 1024,
+            max_tokens = 2048,
             stop = StopStrings,
             cache_prompt = true,
             stream = true,

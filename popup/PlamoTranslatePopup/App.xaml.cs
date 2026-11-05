@@ -41,6 +41,11 @@ public partial class App : Application
     private LlamaTranslateService? _translator;
     private OcrService? _ocr;
     private bool _busy;
+    private DateTime _serverLastUsedUtc = DateTime.UtcNow;
+    private readonly System.Windows.Threading.DispatcherTimer _serverIdleTimer = new()
+    {
+        Interval = TimeSpan.FromSeconds(15),
+    };
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -91,6 +96,34 @@ public partial class App : Application
         _trayMenu = BuildTrayMenu();
         _notifyIcon = new NotifyIconService(BuildTrayTooltip(), _trayMenu);
         _notifyIcon.LeftClick += ShowTrayMenu;
+
+        // 翻訳に使われない llama-server をアイドルタイムアウトで停止する
+        _serverIdleTimer.Tick += OnServerIdleTimerTick;
+        _serverIdleTimer.Start();
+    }
+
+    /// <summary>放置された llama-server を自動停止する</summary>
+    private async void OnServerIdleTimerTick(object? sender, EventArgs e)
+    {
+        var timeout = CurrentSettings.ServerIdleTimeoutSeconds;
+        if (timeout <= 0 || _translator is null)
+            return;
+
+        // 翻訳中は基準を延長して止めない
+        if (_busy)
+        {
+            _serverLastUsedUtc = DateTime.UtcNow;
+            return;
+        }
+
+        if (DateTime.UtcNow - _serverLastUsedUtc < TimeSpan.FromSeconds(timeout))
+            return;
+
+        if (!await _translator.IsServerRunningAsync())
+            return;
+
+        var stopped = _translator.StopServer();
+        Log($"アイドルタイムアウト({timeout}秒): llama-server を停止しました ({stopped} プロセス)");
     }
 
     /// <summary>トレイメニューを構築する(起動時に1回。サーバー状態は Opening で更新)</summary>
@@ -104,6 +137,33 @@ public partial class App : Application
 
         var statusItem = new System.Windows.Forms.ToolStripMenuItem("サーバー: 確認中...") { Enabled = false };
         menu.Items.Add(statusItem);
+
+        var startItem = new System.Windows.Forms.ToolStripMenuItem("サーバーを起動");
+        startItem.Click += async (_, _) =>
+        {
+            if (_translator is null)
+                return;
+            statusItem.Text = "サーバー: 起動中...";
+            var ok = await _translator.EnsureServerRunningAsync();
+            statusItem.Text = ok
+                ? "サーバー: 稼働中 (llama-server)"
+                : "サーバー: 起動できませんでした";
+            if (ok)
+                _serverLastUsedUtc = DateTime.UtcNow;
+        };
+        menu.Items.Add(startItem);
+
+        var stopItem = new System.Windows.Forms.ToolStripMenuItem("サーバーを停止");
+        stopItem.Click += (_, _) =>
+        {
+            if (_translator is null)
+                return;
+            var stopped = _translator.StopServer();
+            Log($"メニューから llama-server を停止しました ({stopped} プロセス)");
+            statusItem.Text = "サーバー: 未起動 (次回翻訳時に自動起動)";
+        };
+        menu.Items.Add(stopItem);
+
         menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
 
         var exitItem = new System.Windows.Forms.ToolStripMenuItem("終了");
@@ -118,6 +178,8 @@ public partial class App : Application
                 statusItem.Text = running
                     ? "サーバー: 稼働中 (llama-server)"
                     : "サーバー: 未起動 (次回翻訳時に自動起動)";
+                startItem.Enabled = !running;
+                stopItem.Enabled = running;
             }
         };
         return menu;
@@ -319,6 +381,8 @@ public partial class App : Application
     /// <summary>テキストの言語を判定して翻訳し、カーソル近くにストリーミング表示する。表示したウィンドウを返す</summary>
     private async Task<TranslateWindow> TranslateAndShowAsync(string text, bool showSource = false)
     {
+        _serverLastUsedUtc = DateTime.UtcNow; // アイドルタイムアウトの基準を更新
+
         var sourceLang = LlamaTranslateService.DetectLanguage(text);
         var targetLang = sourceLang == "ja" ? "en" : "ja";
 

@@ -27,6 +27,7 @@ public partial class SettingsWindow : Window
         HotkeyTranslateBox.Text = _translateHotkey;
         HotkeyOcrBox.Text = _ocrHotkey;
         AutoCloseBox.Text = current.AutoCloseSeconds.ToString();
+        IdleTimeoutBox.Text = current.ServerIdleTimeoutSeconds.ToString();
         OpacitySlider.Value = Math.Clamp(current.PopupOpacity * 100, 30, 100);
         OpacityValueText.Text = $"{(int)OpacitySlider.Value}%";
     }
@@ -105,10 +106,19 @@ public partial class SettingsWindow : Window
             return;
         }
 
+        if (!int.TryParse(IdleTimeoutBox.Text.Trim(), out var idleTimeout) || idleTimeout is < 0 or > 86400)
+        {
+            MessageBox.Show(this,
+                "放置したら自動終了の秒数は 0〜86400 の整数で入力してください。",
+                Title, MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
         var settings = _base.Clone();
         settings.HotkeyTranslate = _translateHotkey;
         settings.HotkeyOcr = _ocrHotkey;
         settings.AutoCloseSeconds = seconds;
+        settings.ServerIdleTimeoutSeconds = idleTimeout;
         settings.PopupOpacity = OpacitySlider.Value / 100.0;
 
         if (!_apply(settings))

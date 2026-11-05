@@ -4,5 +4,6 @@
   "autoCloseSeconds": 30,
   "popupOpacity": 0.95,
   "hotkeyTranslate": "Ctrl+F7",
-  "hotkeyOcr": "Ctrl+F9"
+  "hotkeyOcr": "Ctrl+F9",
+  "serverIdleTimeoutSeconds": 300
 }

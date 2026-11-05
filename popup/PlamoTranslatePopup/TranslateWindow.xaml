@@ -67,12 +67,14 @@
                      Background="Transparent"
                      IsReadOnly="True"
                      MaxHeight="100"
+                     VerticalScrollBarVisibility="Auto"
+                     HorizontalScrollBarVisibility="Disabled"
                      FontSize="12"
                      Foreground="{StaticResource TextSecondary}"
                      Visibility="Collapsed"
                      VerticalAlignment="Top" />
 
-            <!-- 本文 -->
+            <!-- 本文(長文はスクロール) -->
             <TextBox x:Name="ResultBox"
                      Grid.Row="2"
                      Margin="0,6,0,0"
@@ -82,6 +84,8 @@
                      Background="Transparent"
                      IsReadOnly="True"
                      MaxHeight="360"
+                     VerticalScrollBarVisibility="Auto"
+                     HorizontalScrollBarVisibility="Disabled"
                      FontSize="14"
                      Foreground="{StaticResource TextPrimary}"
                      VerticalAlignment="Top" />
