@@ -33,6 +33,25 @@ public partial class TranslateWindow : Window
         StartAutoCloseTimer();
     }
 
+    /// <summary>短いメッセージをカーソル近くに表示し、2.5秒で自動的に閉じる(選択なし等のフィードバック用)</summary>
+    public void ShowHintAtCursor(string message)
+    {
+        DirectionText.Text = "情報";
+        ResultBox.Text = message;
+
+        var (dipX, dipY) = CursorUtilities.GetCursorDipPosition();
+        Left = dipX + 12;
+        Top = dipY + 12;
+        Show();
+
+        _autoCloseTimer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(2.5)
+        };
+        _autoCloseTimer.Tick += (_, _) => Close();
+        _autoCloseTimer.Start();
+    }
+
     public void SetResult(string text)
     {
         ResultBox.Text = text;

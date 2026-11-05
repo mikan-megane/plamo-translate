@@ -27,7 +27,7 @@ public sealed class HotkeyService : IDisposable
     private readonly List<int> _registeredIds = new();
     private bool _disposed;
 
-    public event EventHandler? HotkeyPressed;
+    public event Action<int>? HotkeyPressed;
 
     public HotkeyService()
     {
@@ -64,7 +64,7 @@ public sealed class HotkeyService : IDisposable
     {
         if (msg == WM_HOTKEY)
         {
-            HotkeyPressed?.Invoke(this, EventArgs.Empty);
+            HotkeyPressed?.Invoke(wParam.ToInt32());
             handled = true;
         }
         return IntPtr.Zero;

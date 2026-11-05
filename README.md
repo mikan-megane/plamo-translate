@@ -51,16 +51,22 @@ python translate.py --server status   # 状態確認
 
 他ソフトで選択中のテキストを **Ctrl+Alt+T** で翻訳し、カーソルの近くに訳を表示する
 Windows 常駐アプリ(.NET 8 WPF、シングルファイル自己完結 exe)。
+**Ctrl+Alt+O** では画面の一部をドラッグで範囲選択し、OCR(Windows 内蔵エンジン)で
+テキスト抽出→翻訳できます(画像やコピーできない画面の文字向け)。
 
 ### 使い方
 
 1. `popup\dist\PlamoTranslatePopup.exe` をダブルクリックして起動(タスクトレイに常駐)
 2. 任意のアプリでテキストを選択した状態で `Ctrl+Alt+T`
+   - または `Ctrl+Alt+O` → ドラッグで画面の範囲を選択(Esc でキャンセル)
 3. カーソル付近にポップアップ表示(30秒で自動クローズ)
 
 選択テキストは Ctrl+C 送信で一時取得し、翻訳後にクリップボードへ復元します。
 llama-server が未起動なら自動起動します(ポップアップ表示に数秒かかります)。
 トレイアイコンの右クリック → 「終了」で終了します。
+
+OCR は Windows 内蔵の `Windows.Media.Ocr` を使用します(外部依存なし。
+日本語 OCR 言語パックが必要: 設定 → 时計と言語 → 言語と地域)。
 
 ### 設定 (`popup.json`)
 
@@ -73,6 +79,13 @@ exe と同じフォルダに置くと既定値を上書きできます(dist 版�
 | `autoCloseSeconds` | `30` | ポップアップ自動クローズ秒数 |
 
 動作ログは `%TEMP%\plamo-popup.log` に出力されます。
+
+CLI/テスト用の起動モード:
+
+```bash
+PlamoTranslatePopup.exe --trigger          # クリップボードの内容を翻訳して表示し終了
+PlamoTranslatePopup.exe --ocr 300,300,900,200  # 指定領域(物理ピクセル)をOCR翻訳して表示し終了
+```
 
 ### ビルド
 

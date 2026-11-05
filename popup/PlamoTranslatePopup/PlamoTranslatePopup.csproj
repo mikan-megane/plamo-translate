@@ -2,17 +2,24 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>PlamoTranslatePopup</AssemblyName>
     <RootNamespace>PlamoTranslatePopup</RootNamespace>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <Product>plamo-translate</Product>
     <Company>mikan-megane</Company>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- UseWindowsForms が追加する暗黙 using が WPF と衝突するため除去(System.Drawing 利用のためだけに WinForms を参照) -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
 
   <ItemGroup>
     <None Update="popup.json">

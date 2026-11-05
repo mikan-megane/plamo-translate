@@ -12,18 +12,20 @@ public class KeyboardService
         byte bVk,
         byte bScan,
         uint dwFlags,
-        uint dwExtraInfo);
+        UIntPtr dwExtraInfo);
 
-    private const byte VK_CONTROL = 0x11;
-    private const byte VK_C = 0x43;
+    private const byte SC_CONTROL = 0x1D;
+    private const byte SC_C = 0x2E;
     private const uint KEYEVENTF_KEYUP = 0x0002;
+    private const uint KEYEVENTF_SCANCODE = 0x0008;
 
     /// <summary>選択中テキストをクリップボードへコピーさせるため Ctrl+C を送信する</summary>
     public void SendCtrlC()
     {
-        keybd_event(VK_CONTROL, 0, 0, 0);
-        keybd_event(VK_C, 0, 0, 0);
-        keybd_event(VK_C, 0, KEYEVENTF_KEYUP, 0);
-        keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0);
+        // スキャンコード + KEYEVENTF_SCANCODE 指定(VKのみの注入を無視するアプリがあるため)
+        keybd_event(0, SC_CONTROL, KEYEVENTF_SCANCODE, UIntPtr.Zero);
+        keybd_event(0, SC_C, KEYEVENTF_SCANCODE, UIntPtr.Zero);
+        keybd_event(0, SC_C, KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP, UIntPtr.Zero);
+        keybd_event(0, SC_CONTROL, KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP, UIntPtr.Zero);
     }
 }
