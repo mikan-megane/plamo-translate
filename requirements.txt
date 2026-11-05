@@ -1,0 +1,6 @@
+# 翻訳CLI (translate.py) は Python 標準ライブラリのみで動作します
+# 以下は transformers 版 (translate_transformers.py) を使う場合のみ必要
+torch
+transformers>=4.57
+accelerate
+numba
