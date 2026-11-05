@@ -6,6 +6,7 @@
 
 - `translate.py` — メインCLI(llama-server と通信、標準ライブラリのみで動作)
 - `translate_transformers.py` — transformers 版(0.8B BF16、比較・退避用)
+- `popup/` — 選択テキスト翻訳ポップアップアプリ(WPF、exe 直接実行)
 - `llama-bin/` — llama.cpp CUDA ビルド(b12121)
 - `models/` — モデルファイル(GGUF)
 
@@ -45,6 +46,43 @@ python translate.py --server status   # 状態確認
 | 翻訳1文の応答 | 0.4〜0.8 秒 |
 | 生成速度 | 約60〜95 tok/s |
 | VRAM消費(常駐時) | 約2.1 GB |
+
+## 翻訳ポップアップアプリ (`popup/`)
+
+他ソフトで選択中のテキストを **Ctrl+Alt+T** で翻訳し、カーソルの近くに訳を表示する
+Windows 常駐アプリ(.NET 8 WPF、シングルファイル自己完結 exe)。
+
+### 使い方
+
+1. `popup\dist\PlamoTranslatePopup.exe` をダブルクリックして起動(タスクトレイに常駐)
+2. 任意のアプリでテキストを選択した状態で `Ctrl+Alt+T`
+3. カーソル付近にポップアップ表示(30秒で自動クローズ)
+
+選択テキストは Ctrl+C 送信で一時取得し、翻訳後にクリップボードへ復元します。
+llama-server が未起動なら自動起動します(ポップアップ表示に数秒かかります)。
+トレイアイコンの右クリック → 「終了」で終了します。
+
+### 設定 (`popup.json`)
+
+exe と同じフォルダに置くと既定値を上書きできます(dist 版に同梱)。
+
+| キー | 既定値 | 説明 |
+|---|---|---|
+| `serverUrl` | `http://127.0.0.1:8080` | llama-server の URL |
+| `modelRoot` | リポジトリルート | `llama-bin/`・`models/` の探索ルート |
+| `autoCloseSeconds` | `30` | ポップアップ自動クローズ秒数 |
+
+動作ログは `%TEMP%\plamo-popup.log` に出力されます。
+
+### ビルド
+
+```bash
+dotnet publish popup/PlamoTranslatePopup/PlamoTranslatePopup.csproj -c Release -r win-x64 `
+  --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
+  -p:EnableCompressionInSingleFile=true -o popup/dist
+```
+
+約68MBの単一exe(`popup/dist/PlamoTranslatePopup.exe`)が生成されます。
 
 ## transformers 版を使う場合
 

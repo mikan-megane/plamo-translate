@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- サーバーやホットキーの既定値。必要ならexeの隣に置いて値を上書きできる -->
+{
+  "serverUrl": "http://127.0.0.1:8080",
+  "modelRoot": "C:\\Users\\mikan\\ghq\\github.com\\mikan-megane\\plamo-translate",
+  "autoCloseSeconds": 30
+}

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>PlamoTranslatePopup</AssemblyName>
+    <RootNamespace>PlamoTranslatePopup</RootNamespace>
+    <Version>0.1.0</Version>
+    <Product>plamo-translate</Product>
+    <Company>mikan-megane</Company>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Update="popup.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

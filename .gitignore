@@ -2,3 +2,8 @@
 llama-bin/
 models/
 *.gguf
+
+# popup published binary
+popup/dist/
+popup/*/bin/
+popup/*/obj/
