@@ -3,7 +3,6 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
-using System.Windows.Controls;
 using PlamoTranslatePopup.Models;
 using PlamoTranslatePopup.Services;
 
@@ -11,8 +10,9 @@ namespace PlamoTranslatePopup;
 
 /// <summary>
 /// トレイ常駐 + グローバルホットキーで翻訳するアプリ。
-/// - Ctrl+Alt+T: 選択中テキストを翻訳してカーソル近くに表示
-/// - Ctrl+Alt+O: 画面の一部を範囲選択して OCR → 翻訳して表示
+/// - 既定 Ctrl+F7: 選択中テキストを翻訳してカーソル近くに表示
+/// - 既定 Ctrl+F9: 画面の一部を範囲選択して OCR → 翻訳して表示
+/// ホットキー・ポップアップの表示はトレイメニュー「設定...」から変更できる。
 /// いずれのモードでもプロセス終了時に llama-server を停止する。
 /// </summary>
 public partial class App : Application
@@ -36,6 +36,7 @@ public partial class App : Application
     private readonly ScreenCaptureService _screenCapture = new();
     private HotkeyService? _hotkey;
     private NotifyIconService? _notifyIcon;
+    private SettingsWindow? _settingsWindow;
     private LlamaTranslateService? _translator;
     private OcrService? _ocr;
     private bool _busy;
@@ -47,6 +48,15 @@ public partial class App : Application
         CurrentSettings = PopupSettings.Load();
         _translator = new LlamaTranslateService(CurrentSettings);
         _ocr = new OcrService();
+
+        // --settings: 設定画面だけを開いて終了(テスト/直接起動用)
+        if (e.Args.Any(a => string.Equals(a, "--settings", StringComparison.OrdinalIgnoreCase)))
+        {
+            var window = new SettingsWindow(CurrentSettings, ApplySettings);
+            window.Closed += (_, _) => Shutdown();
+            window.Show();
+            return;
+        }
 
         // --trigger: クリップボードの内容を翻訳してポップアップし即終了(テスト/CLI用)
         if (e.Args.Any(a => string.Equals(a, "--trigger", StringComparison.OrdinalIgnoreCase)))
@@ -72,49 +82,135 @@ public partial class App : Application
 
         // 隠しウィンドウ経由でホットキーを受け取る
         _hotkey = new HotkeyService();
-        RegisterHotkeySafe(HotkeyService.MOD_CONTROL | HotkeyService.MOD_ALT | HotkeyService.MOD_NOREPEAT,
-            0x54 /* 'T' */, HotkeyTranslateId, "Ctrl+Alt+T (選択翻訳)");
-        RegisterHotkeySafe(HotkeyService.MOD_CONTROL | HotkeyService.MOD_ALT | HotkeyService.MOD_NOREPEAT,
-            0x4F /* 'O' */, HotkeyOcrId, "Ctrl+Alt+O (OCR翻訳)");
         _hotkey.HotkeyPressed += OnHotkeyPressed;
-        Log($"起動完了: ホットキー登録済み (Ctrl+Alt+T / Ctrl+Alt+O, OCR={(_ocr.IsAvailable ? "利用可能" : "利用不可")})");
+        RegisterHotkeysFromSettings(CurrentSettings);
+        Log($"起動完了: ホットキー ({CurrentSettings.HotkeyTranslate} / {CurrentSettings.HotkeyOcr}, OCR={(_ocr.IsAvailable ? "利用可能" : "利用不可")})");
 
-        _notifyIcon = new NotifyIconService("PLaMo翻訳ポップアップ (Ctrl+Alt+T / Ctrl+Alt+O)");
+        _notifyIcon = new NotifyIconService(BuildTrayTooltip());
         _notifyIcon.ContextMenuRequested += ShowTrayMenu;
         _notifyIcon.LeftClick += ShowTrayMenu;
+
+        // Windows 11 ではトレイアイコンが「隠れたアイコン」(^) に入るため初回のみ案内する
+        if (!CurrentSettings.TrayHintShown)
+        {
+            _notifyIcon.ShowBalloon(
+                "PLaMo翻訳ポップアップ",
+                "トレイに常駐しました。アイコンが見つからない場合は、タスクバー右端の「^」(隠れたアイコン)を開いてください。\n" +
+                "そこからドラッグすると常に表示できます。");
+            CurrentSettings.TrayHintShown = true;
+            CurrentSettings.Save();
+        }
     }
 
-    private void RegisterHotkeySafe(uint modifiers, uint virtualKey, int id, string description)
+    private string BuildTrayTooltip() =>
+        $"PLaMo翻訳ポップアップ ({CurrentSettings.HotkeyTranslate} / {CurrentSettings.HotkeyOcr})";
+
+    /// <summary>設定からホットキーを登録する。失敗したら現行設定で再登録して復元する</summary>
+    private bool RegisterHotkeysFromSettings(PopupSettings settings)
+    {
+        if (_hotkey is null)
+            return true;
+
+        _hotkey.UnregisterAll();
+        var ok = TryRegisterHotkey(settings.HotkeyTranslate, HotkeyTranslateId);
+        ok &= TryRegisterHotkey(settings.HotkeyOcr, HotkeyOcrId);
+
+        if (!ok)
+        {
+            // 競合等で登録できない場合は元の設定に戻す
+            Log("ホットキー再登録に失敗: 元の設定に戻します");
+            _hotkey.UnregisterAll();
+            TryRegisterHotkey(CurrentSettings.HotkeyTranslate, HotkeyTranslateId);
+            TryRegisterHotkey(CurrentSettings.HotkeyOcr, HotkeyOcrId);
+        }
+        return ok;
+    }
+
+    private bool TryRegisterHotkey(string text, int id)
+    {
+        if (!HotkeyUtil.TryParse(text, out var modifiers, out var vk))
+        {
+            Log($"ホットキー設定が無効: '{text}'");
+            return false;
+        }
+        return RegisterHotkeySafe(modifiers | HotkeyService.MOD_NOREPEAT, vk, id, text);
+    }
+
+    private bool RegisterHotkeySafe(uint modifiers, uint virtualKey, int id, string description)
     {
         try
         {
             _hotkey!.Register(modifiers, virtualKey, id);
+            Log($"ホットキー登録: {description}");
+            return true;
         }
         catch (InvalidOperationException ex)
         {
             Log($"ホットキー登録失敗 {description}: {ex.Message}");
+            return false;
         }
     }
 
-    private void ShowTrayMenu(object? sender, EventArgs e)
+    /// <summary>
+    /// 設定画面からの適用。ホットキー登録に失敗した場合は false を返し、
+    /// 設定は保存されない(保存は競合がないと確認できてから)。
+    /// </summary>
+    internal bool ApplySettings(PopupSettings settings)
     {
-        var menu = new ContextMenu();
-
-        var statusItem = new MenuItem
+        if (!RegisterHotkeysFromSettings(settings))
         {
-            Header = _translator is { } t && t.IsServerRunningAsync().GetAwaiter().GetResult()
-                ? "サーバー: 稼働中 (llama-server)"
-                : "サーバー: 未起動 (次回ホットキー時自動起動)",
-            IsEnabled = false,
-        };
-        menu.Items.Add(statusItem);
-        menu.Items.Add(new Separator());
+            Log("設定の適用を中止: ホットキーが登録できません(競合?)");
+            return false;
+        }
 
-        var exitItem = new MenuItem { Header = "終了" };
+        CurrentSettings = settings;
+        settings.Save();
+        _notifyIcon?.UpdateTooltip(BuildTrayTooltip());
+        Log($"設定を適用: 選択={settings.HotkeyTranslate}, OCR={settings.HotkeyOcr}, " +
+            $"自動クローズ={settings.AutoCloseSeconds}秒, 不透明度={settings.PopupOpacity:P0}");
+        return true;
+    }
+
+    private void OpenSettings()
+    {
+        if (_settingsWindow is { IsLoaded: true } window)
+        {
+            window.Activate();
+            return;
+        }
+
+        _settingsWindow = new SettingsWindow(CurrentSettings, ApplySettings);
+        _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+        _settingsWindow.Show();
+        _settingsWindow.Activate();
+    }
+
+    private async void ShowTrayMenu(object? sender, EventArgs e)
+    {
+        var menu = new System.Windows.Forms.ContextMenuStrip();
+
+        var settingsItem = new System.Windows.Forms.ToolStripMenuItem("設定...");
+        settingsItem.Click += (_, _) => OpenSettings();
+        menu.Items.Add(settingsItem);
+
+        var statusItem = new System.Windows.Forms.ToolStripMenuItem("サーバー: 確認中...") { Enabled = false };
+        menu.Items.Add(statusItem);
+        menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
+
+        var exitItem = new System.Windows.Forms.ToolStripMenuItem("終了");
         exitItem.Click += (_, _) => Shutdown();
         menu.Items.Add(exitItem);
 
-        menu.IsOpen = true;
+        // MouseUp(Right) の直後に WinForms が WM_CONTEXTMENU で自動表示する
+        _notifyIcon?.ShowContextMenu(menu);
+
+        if (_translator is { } t)
+        {
+            var running = await t.IsServerRunningAsync();
+            statusItem.Text = running
+                ? "サーバー: 稼働中 (llama-server)"
+                : "サーバー: 未起動 (次回翻訳時に自動起動)";
+        }
     }
 
     private async void OnHotkeyPressed(int id)
@@ -128,7 +224,7 @@ public partial class App : Application
             await RunSelectionTranslateAsync();
     }
 
-    /// <summary>ホットキー(Ctrl+Alt+T): 選択テキストを取得して翻訳する</summary>
+    /// <summary>ホットキー(選択翻訳): 選択テキストを取得して翻訳する</summary>
     private async Task RunSelectionTranslateAsync()
     {
         Log("ホットキー検知: 選択翻訳");
@@ -175,7 +271,7 @@ public partial class App : Application
         }
     }
 
-    /// <summary>ホットキー(Ctrl+Alt+O): 画面の範囲を選択して OCR → 翻訳する</summary>
+    /// <summary>ホットキー(OCR翻訳): 画面の範囲を選択して OCR → 翻訳する</summary>
     private async Task RunOcrTranslateAsync()
     {
         Log("ホットキー検知: OCR翻訳");
@@ -324,14 +420,18 @@ public partial class App : Application
         }
     }
 
+    private static readonly UTF8Encoding LogEncoding = new(encoderShouldEmitUTF8Identifier: true);
+
     internal static void Log(string message)
     {
         try
         {
-            var line = $"{DateTime.Now:HH:mm:ss.fff} {message}";
-            File.AppendAllText(
-                Path.Combine(Path.GetTempPath(), "plamo-popup.log"),
-                line + Environment.NewLine);
+            var path = Path.Combine(Path.GetTempPath(), "plamo-popup.log");
+            var line = $"{DateTime.Now:HH:mm:ss.fff} {message}" + Environment.NewLine;
+            if (!File.Exists(path))
+                File.WriteAllText(path, line, LogEncoding); // 新規作成時のみ BOM が書かれる
+            else
+                File.AppendAllText(path, line, LogEncoding);
         }
         catch
         {

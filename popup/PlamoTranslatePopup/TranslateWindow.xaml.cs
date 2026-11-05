@@ -17,6 +17,7 @@ public partial class TranslateWindow : Window
     {
         InitializeComponent();
         ContentRendered += TranslateWindow_ContentRendered;
+        Opacity = Math.Clamp(App.CurrentSettings.PopupOpacity, 0.3, 1.0);
 
         // カーソルが乗っている間は自動クローズしない
         MouseEnter += (_, _) => _autoCloseTimer?.Stop();
@@ -39,7 +40,9 @@ public partial class TranslateWindow : Window
         Top = dipY + 12;
         Show();
 
-        _autoCloseDelay = TimeSpan.FromSeconds(Math.Max(1, App.CurrentSettings.AutoCloseSeconds));
+        _autoCloseDelay = App.CurrentSettings.AutoCloseSeconds > 0
+            ? TimeSpan.FromSeconds(Math.Min(3600, App.CurrentSettings.AutoCloseSeconds))
+            : TimeSpan.Zero; // 0 = 自動で閉じない
         StartAutoCloseTimer();
     }
 

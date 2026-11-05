@@ -60,6 +60,17 @@ public sealed class HotkeyService : IDisposable
         _registeredIds.Add(id);
     }
 
+    /// <summary>登録済みのホットキーをすべて解除する(設定変更時の再登録用)</summary>
+    public void UnregisterAll()
+    {
+        if (_hwndSource != null)
+        {
+            foreach (var id in _registeredIds)
+                UnregisterHotKey(_hwndSource.Handle, id);
+        }
+        _registeredIds.Clear();
+    }
+
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
         if (msg == WM_HOTKEY)
