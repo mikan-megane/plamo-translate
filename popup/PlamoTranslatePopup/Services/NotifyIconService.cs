@@ -73,9 +73,46 @@ public sealed class NotifyIconService : IDisposable
             szTip = tooltip,
         };
 
-        // 既定はシステムの情報アイコン(IDI_INFORMATION)
-        _nid.hIcon = LoadIcon(IntPtr.Zero, (IntPtr)32516);
+        // アプリ独自のアイコン(青地に「訳」)を描画して使用する
+        _nid.hIcon = CreateAppIcon();
         Shell_NotifyIcon(NIM_ADD, ref _nid);
+    }
+
+    /// <summary>System.Drawing でアプリアイコンを描画し HICON を返す</summary>
+    private static IntPtr CreateAppIcon()
+    {
+        const int size = 32;
+        using var bmp = new System.Drawing.Bitmap(size, size);
+        using (var g = System.Drawing.Graphics.FromImage(bmp))
+        {
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+
+            // 角丸の青い背景
+            using var path = new System.Drawing.Drawing2D.GraphicsPath();
+            var r = 7;
+            var rect = new System.Drawing.Rectangle(1, 1, size - 2, size - 2);
+            path.AddArc(rect.X, rect.Y, r * 2, r * 2, 180, 90);
+            path.AddArc(rect.Right - r * 2, rect.Y, r * 2, r * 2, 270, 90);
+            path.AddArc(rect.Right - r * 2, rect.Bottom - r * 2, r * 2, r * 2, 0, 90);
+            path.AddArc(rect.X, rect.Bottom - r * 2, r * 2, r * 2, 90, 90);
+            path.CloseFigure();
+            using var bg = new System.Drawing.Drawing2D.LinearGradientBrush(
+                rect, System.Drawing.Color.FromArgb(63, 130, 246), System.Drawing.Color.FromArgb(29, 78, 216), 60f);
+            g.FillPath(bg, path);
+
+            // 中央に「訳」
+            using var font = new System.Drawing.Font("Yu Gothic UI", 15f, System.Drawing.FontStyle.Bold,
+                System.Drawing.GraphicsUnit.Pixel);
+            using var textBrush = new System.Drawing.SolidBrush(System.Drawing.Color.White);
+            var fmt = new System.Drawing.StringFormat
+            {
+                Alignment = System.Drawing.StringAlignment.Center,
+                LineAlignment = System.Drawing.StringAlignment.Center,
+            };
+            g.DrawString("訳", font, textBrush, new System.Drawing.RectangleF(0, -1, size, size), fmt);
+        }
+        return bmp.GetHicon();
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -106,6 +143,9 @@ public sealed class NotifyIconService : IDisposable
         if (_nid.hWnd != IntPtr.Zero)
             Shell_NotifyIcon(NIM_DELETE, ref _nid);
 
+        if (_nid.hIcon != IntPtr.Zero)
+            DestroyIcon(_nid.hIcon);
+
         _hwndSource?.RemoveHook(WndProc);
         _hwndSource?.Dispose();
         _messageWindow?.Close();
@@ -113,6 +153,6 @@ public sealed class NotifyIconService : IDisposable
         _disposed = true;
     }
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern IntPtr LoadIcon(IntPtr hInstance, IntPtr lpIconName);
+    [DllImport("user32.dll")]
+    private static extern bool DestroyIcon(IntPtr hIcon);
 }

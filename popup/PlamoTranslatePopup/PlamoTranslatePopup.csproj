@@ -10,7 +10,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>PlamoTranslatePopup</AssemblyName>
     <RootNamespace>PlamoTranslatePopup</RootNamespace>
-    <Version>0.2.0</Version>
+    <Version>0.2.1</Version>
     <Product>plamo-translate</Product>
     <Company>mikan-megane</Company>
   </PropertyGroup>

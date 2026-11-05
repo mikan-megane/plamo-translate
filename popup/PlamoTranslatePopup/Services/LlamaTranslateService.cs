@@ -99,6 +99,28 @@ public sealed class LlamaTranslateService
     public async Task<bool> IsServerRunningAsync(CancellationToken ct = default) =>
         await IsHealthyAsync(ct);
 
+    /// <summary>
+    /// llama-server プロセスを終了させる(アプリ終了時に VRAM を解放するため)。
+    /// 戻り値は終了させたプロセス数。
+    /// </summary>
+    public int StopServer()
+    {
+        var stopped = 0;
+        foreach (var proc in Process.GetProcessesByName("llama-server"))
+        {
+            try
+            {
+                proc.Kill(entireProcessTree: true);
+                stopped++;
+            }
+            catch
+            {
+                // 既に終了している場合は無視
+            }
+        }
+        return stopped;
+    }
+
     /// <summary>llama-server の /completions を叩いて翻訳する</summary>
     public async Task<string> TranslateAsync(
         string text, string sourceLang, string targetLang, CancellationToken ct = default)

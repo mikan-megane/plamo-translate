@@ -38,6 +38,7 @@ public partial class App : Application
     private LlamaTranslateService? _translator;
     private OcrService? _ocr;
     private bool _busy;
+    private bool _residentMode;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -63,6 +64,7 @@ public partial class App : Application
         }
 
         // 隠しウィンドウ経由でホットキーを受け取る
+        _residentMode = true;
         _hotkey = new HotkeyService();
         RegisterHotkeySafe(HotkeyService.MOD_CONTROL | HotkeyService.MOD_ALT | HotkeyService.MOD_NOREPEAT,
             0x54 /* 'T' */, HotkeyTranslateId, "Ctrl+Alt+T (選択翻訳)");
@@ -74,6 +76,18 @@ public partial class App : Application
         _notifyIcon = new NotifyIconService("PLaMo翻訳ポップアップ (Ctrl+Alt+T / Ctrl+Alt+O)");
         _notifyIcon.ContextMenuRequested += ShowTrayMenu;
         _notifyIcon.LeftClick += ShowTrayMenu;
+
+        // --exit-after N : N 秒後に自動終了(終了処理のテスト用)
+        var exitIndex = Array.FindIndex(e.Args, a => string.Equals(a, "--exit-after", StringComparison.OrdinalIgnoreCase));
+        if (exitIndex >= 0 && exitIndex + 1 < e.Args.Length && int.TryParse(e.Args[exitIndex + 1], out var exitSeconds))
+        {
+            var timer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(exitSeconds)
+            };
+            timer.Tick += (_, _) => Shutdown();
+            timer.Start();
+        }
     }
 
     private void RegisterHotkeySafe(uint modifiers, uint virtualKey, int id, string description)
@@ -382,6 +396,14 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        // 常駐モードで終了する際は llama-server も停止して VRAM を解放する
+        // (--trigger / --ocr の単発モードでは既存サーバーを残す)
+        if (_residentMode && _translator is { } t)
+        {
+            var stopped = t.StopServer();
+            Log($"終了: llama-server を停止しました ({stopped} プロセス)");
+        }
+
         _hotkey?.Dispose();
         _notifyIcon?.Dispose();
         base.OnExit(e);
