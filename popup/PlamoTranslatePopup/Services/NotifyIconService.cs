@@ -6,30 +6,48 @@ namespace PlamoTranslatePopup.Services;
 
 /// <summary>
 /// WinForms の NotifyIcon によるシステムトレイアイコン。
-/// Win32 直呼びに比べ、NOTIFYICONDATA のマーシャリングや
-/// Explorer 再起動時の再登録(TaskbarCreated)をコンポーネント側で処理してくれるため確実。
+/// 右クリックは WinForms が ContextMenuStrip をフォーカス処理込みで自動表示する。
+/// 左クリックでは ShowMenu() で同じメニューを表示する。
 /// </summary>
 public sealed class NotifyIconService : IDisposable
 {
     private readonly NotifyIcon _notifyIcon;
     private readonly Icon _icon;
     private readonly IntPtr _hIcon;
+    private readonly NativeWindow _focusHelper;
     private bool _disposed;
 
     public event EventHandler? LeftClick;
-    public event EventHandler? ContextMenuRequested;
 
-    public NotifyIconService(string tooltip)
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    public NotifyIconService(string tooltip, ContextMenuStrip menu)
     {
         (_icon, _hIcon) = CreateAppIcon();
+
+        // 左クリック時にメニューへフォーカスを与えるための隠しウィンドウ
+        // (フォーカスが無いとメニューの外クリックで閉じなくなるため)
+        _focusHelper = new NativeWindow();
+        _focusHelper.CreateHandle(new CreateParams
+        {
+            Caption = "PlamoTranslateTrayHelper",
+            ClassName = "STATIC", // システム登録済みクラスを借用
+            X = -200,
+            Y = -200,
+            Width = 0,
+            Height = 0,
+            ExStyle = 0x00000080, // WS_EX_TOOLWINDOW
+        });
+
         _notifyIcon = new NotifyIcon
         {
             Icon = _icon,
             Text = ClampTooltip(tooltip),
+            ContextMenuStrip = menu,
             Visible = true,
         };
         _notifyIcon.MouseClick += OnMouseClick;
-        _notifyIcon.MouseUp += OnMouseUp;
     }
 
     private void OnMouseClick(object? sender, MouseEventArgs e)
@@ -38,22 +56,16 @@ public sealed class NotifyIconService : IDisposable
             LeftClick?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>
-    /// 右クリック(WM_CONTEXTMENU の直前)。ここでメニューを差し込むと
-    /// NotifyIcon が自動的にフォーカス処理込みで表示してくれる。
-    /// </summary>
-    private void OnMouseUp(object? sender, MouseEventArgs e)
+    /// <summary>左クリック用: フォーカスを与えてからメニューを表示する</summary>
+    public void ShowMenu(ContextMenuStrip menu)
     {
-        if (e.Button == MouseButtons.Right)
-            ContextMenuRequested?.Invoke(this, EventArgs.Empty);
+        if (_focusHelper.Handle != IntPtr.Zero)
+            SetForegroundWindow(_focusHelper.Handle);
+        menu.Show(System.Windows.Forms.Cursor.Position);
     }
 
     public void UpdateTooltip(string tooltip) =>
         _notifyIcon.Text = ClampTooltip(tooltip);
-
-    /// <summary>右クリックで自動表示されるメニューを差し替える</summary>
-    public void ShowContextMenu(ContextMenuStrip menu) =>
-        _notifyIcon.ContextMenuStrip = menu;
 
     private static string ClampTooltip(string tooltip) =>
         tooltip.Length > 63 ? tooltip[..63] : tooltip; // NotifyIcon.Text は 63 文字まで
@@ -101,10 +113,11 @@ public sealed class NotifyIconService : IDisposable
             return;
 
         _notifyIcon.MouseClick -= OnMouseClick;
-        _notifyIcon.MouseUp -= OnMouseUp;
         _notifyIcon.Visible = false;
         _notifyIcon.Icon = null;
         _notifyIcon.Dispose();
+
+        _focusHelper.DestroyHandle();
 
         if (_hIcon != IntPtr.Zero)
             DestroyIcon(_hIcon);

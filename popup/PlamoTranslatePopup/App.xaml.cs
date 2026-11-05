@@ -36,6 +36,7 @@ public partial class App : Application
     private readonly ScreenCaptureService _screenCapture = new();
     private HotkeyService? _hotkey;
     private NotifyIconService? _notifyIcon;
+    private System.Windows.Forms.ContextMenuStrip? _trayMenu;
     private SettingsWindow? _settingsWindow;
     private LlamaTranslateService? _translator;
     private OcrService? _ocr;
@@ -86,9 +87,40 @@ public partial class App : Application
         RegisterHotkeysFromSettings(CurrentSettings);
         Log($"起動完了: ホットキー ({CurrentSettings.HotkeyTranslate} / {CurrentSettings.HotkeyOcr}, OCR={(_ocr.IsAvailable ? "利用可能" : "利用不可")})");
 
-        _notifyIcon = new NotifyIconService(BuildTrayTooltip());
-        _notifyIcon.ContextMenuRequested += ShowTrayMenu;
+        // トレイメニューは起動時に構築しておく(右クリック時の初回表示を速くする)
+        _trayMenu = BuildTrayMenu();
+        _notifyIcon = new NotifyIconService(BuildTrayTooltip(), _trayMenu);
         _notifyIcon.LeftClick += ShowTrayMenu;
+    }
+
+    /// <summary>トレイメニューを構築する(起動時に1回。サーバー状態は Opening で更新)</summary>
+    private System.Windows.Forms.ContextMenuStrip BuildTrayMenu()
+    {
+        var menu = new System.Windows.Forms.ContextMenuStrip();
+
+        var settingsItem = new System.Windows.Forms.ToolStripMenuItem("設定...");
+        settingsItem.Click += (_, _) => OpenSettings();
+        menu.Items.Add(settingsItem);
+
+        var statusItem = new System.Windows.Forms.ToolStripMenuItem("サーバー: 確認中...") { Enabled = false };
+        menu.Items.Add(statusItem);
+        menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
+
+        var exitItem = new System.Windows.Forms.ToolStripMenuItem("終了");
+        exitItem.Click += (_, _) => Shutdown();
+        menu.Items.Add(exitItem);
+
+        menu.Opening += async (_, _) =>
+        {
+            if (_translator is { } t)
+            {
+                var running = await t.IsServerRunningAsync();
+                statusItem.Text = running
+                    ? "サーバー: 稼働中 (llama-server)"
+                    : "サーバー: 未起動 (次回翻訳時に自動起動)";
+            }
+        };
+        return menu;
     }
 
     private string BuildTrayTooltip() =>
@@ -174,32 +206,10 @@ public partial class App : Application
         _settingsWindow.Activate();
     }
 
-    private async void ShowTrayMenu(object? sender, EventArgs e)
+    private void ShowTrayMenu(object? sender, EventArgs e)
     {
-        var menu = new System.Windows.Forms.ContextMenuStrip();
-
-        var settingsItem = new System.Windows.Forms.ToolStripMenuItem("設定...");
-        settingsItem.Click += (_, _) => OpenSettings();
-        menu.Items.Add(settingsItem);
-
-        var statusItem = new System.Windows.Forms.ToolStripMenuItem("サーバー: 確認中...") { Enabled = false };
-        menu.Items.Add(statusItem);
-        menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
-
-        var exitItem = new System.Windows.Forms.ToolStripMenuItem("終了");
-        exitItem.Click += (_, _) => Shutdown();
-        menu.Items.Add(exitItem);
-
-        // MouseUp(Right) の直後に WinForms が WM_CONTEXTMENU で自動表示する
-        _notifyIcon?.ShowContextMenu(menu);
-
-        if (_translator is { } t)
-        {
-            var running = await t.IsServerRunningAsync();
-            statusItem.Text = running
-                ? "サーバー: 稼働中 (llama-server)"
-                : "サーバー: 未起動 (次回翻訳時に自動起動)";
-        }
+        if (_trayMenu is { } menu)
+            _notifyIcon?.ShowMenu(menu);
     }
 
     private async void OnHotkeyPressed(int id)
@@ -302,16 +312,19 @@ public partial class App : Application
         if (string.IsNullOrWhiteSpace(ocrText))
             return ShowHint("文字を認識できませんでした。");
 
-        return await TranslateAndShowAsync(ocrText);
+        // OCR では翻訳前の文字列もポップアップに表示する
+        return await TranslateAndShowAsync(ocrText, showSource: true);
     }
 
-    /// <summary>テキストの言語を判定して翻訳し、カーソル近くにポップアップ表示。表示したウィンドウを返す</summary>
-    private async Task<TranslateWindow> TranslateAndShowAsync(string text)
+    /// <summary>テキストの言語を判定して翻訳し、カーソル近くにストリーミング表示する。表示したウィンドウを返す</summary>
+    private async Task<TranslateWindow> TranslateAndShowAsync(string text, bool showSource = false)
     {
         var sourceLang = LlamaTranslateService.DetectLanguage(text);
         var targetLang = sourceLang == "ja" ? "en" : "ja";
 
         var popup = new TranslateWindow();
+        if (showSource)
+            popup.SetSource(text);
         popup.ShowAtCursor(sourceLang, targetLang);
 
         var started = await _translator!.EnsureServerRunningAsync();
@@ -323,7 +336,18 @@ public partial class App : Application
             return popup;
         }
 
-        var translated = await _translator.TranslateAsync(text, sourceLang, targetLang);
+        // ストリーミングで逐次表示する
+        var first = true;
+        var translated = await _translator.TranslateStreamAsync(
+            text, sourceLang, targetLang, delta =>
+            {
+                if (first)
+                {
+                    popup.BeginStream();
+                    first = false;
+                }
+                popup.AppendResult(delta);
+            });
         Log($"翻訳完了: {translated[..Math.Min(50, translated.Length)]}");
         popup.SetResult(translated);
         return popup;

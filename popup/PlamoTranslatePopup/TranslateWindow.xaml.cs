@@ -155,6 +155,24 @@ public partial class TranslateWindow : Window
         StartAutoCloseTimer();
     }
 
+    /// <summary>原文(OCR結果)をヘッダーの下に表示する。ShowAtCursor の前に呼ぶ</summary>
+    public void SetSource(string text)
+    {
+        SourceBox.Text = text;
+        SourceBox.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>ストリーミング表示の開始(プレースホルダを消す)</summary>
+    public void BeginStream() =>
+        ResultBox.Text = string.Empty;
+
+    /// <summary>ストリーミングで訳文を追記する(位置は変更しない)</summary>
+    public void AppendResult(string delta)
+    {
+        ResultBox.AppendText(delta);
+        ResultBox.CaretIndex = ResultBox.Text.Length;
+    }
+
     /// <summary>翻訳結果を差し込む。ウィンドウ位置は変えない(ユーザーが動かした位置も保持)</summary>
     public void SetResult(string text)
     {

@@ -121,9 +121,13 @@ public sealed class LlamaTranslateService
         return stopped;
     }
 
-    /// <summary>llama-server の /completions を叩いて翻訳する</summary>
-    public async Task<string> TranslateAsync(
-        string text, string sourceLang, string targetLang, CancellationToken ct = default)
+    /// <summary>
+    /// llama-server のストリーミング API(/v1/completions, stream=true)で翻訳する。
+    /// 生成トークンごとに onDelta が呼ばれる。戻り値は全文(Trim 済み)。
+    /// </summary>
+    public async Task<string> TranslateStreamAsync(
+        string text, string sourceLang, string targetLang,
+        Action<string> onDelta, CancellationToken ct = default)
     {
         var payload = JsonSerializer.Serialize(new
         {
@@ -132,6 +136,7 @@ public sealed class LlamaTranslateService
             max_tokens = 1024,
             stop = StopStrings,
             cache_prompt = true,
+            stream = true,
         });
 
         using var content = new StringContent(payload, Encoding.UTF8, "application/json");
@@ -139,12 +144,38 @@ public sealed class LlamaTranslateService
             new Uri(new Uri(Settings.ServerUrl), "/v1/completions"), content, ct);
         resp.EnsureSuccessStatusCode();
 
-        var json = await resp.Content.ReadAsStringAsync(ct);
-        using var doc = JsonDocument.Parse(json);
-        var choices = doc.RootElement.GetProperty("choices");
-        var result = choices[0].GetProperty("text").GetString() ?? string.Empty;
+        // SSE(text/event-stream)を1行ずつ読む
+        await using var stream = await resp.Content.ReadAsStreamAsync(ct);
+        using var reader = new StreamReader(stream);
+        var full = new StringBuilder();
+        while (await reader.ReadLineAsync(ct) is { } line)
+        {
+            if (!line.StartsWith("data: ", StringComparison.Ordinal))
+                continue;
+            var data = line["data: ".Length..];
+            if (data == "[DONE]")
+                break;
+
+            StreamChunkDto? chunk;
+            try
+            {
+                chunk = JsonSerializer.Deserialize<StreamChunkDto>(data);
+            }
+            catch
+            {
+                continue;
+            }
+
+            var delta = chunk?.choices is { Length: > 0 } choices ? choices[0].text : null;
+            if (!string.IsNullOrEmpty(delta))
+            {
+                full.Append(delta);
+                onDelta(delta);
+            }
+        }
 
         // 念のため終端トークンを除去
+        var result = full.ToString();
         foreach (var stop in StopStrings)
         {
             var idx = result.IndexOf(stop, StringComparison.Ordinal);
@@ -152,5 +183,15 @@ public sealed class LlamaTranslateService
                 result = result[..idx];
         }
         return result.Trim();
+    }
+
+    private sealed class StreamChunkDto
+    {
+        public StreamChoiceDto[]? choices { get; set; }
+    }
+
+    private sealed class StreamChoiceDto
+    {
+        public string? text { get; set; }
     }
 }

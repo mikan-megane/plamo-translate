@@ -30,6 +30,7 @@
         <Grid Margin="10,6,10,10">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
@@ -57,9 +58,23 @@
                         Click="CloseButton_Click" />
             </DockPanel>
 
+            <!-- 原文(OCR時に表示。SetSource で可視化) -->
+            <TextBox x:Name="SourceBox"
+                     Grid.Row="1"
+                     Margin="0,8,0,0"
+                     TextWrapping="Wrap"
+                     BorderThickness="0"
+                     Background="Transparent"
+                     IsReadOnly="True"
+                     MaxHeight="100"
+                     FontSize="12"
+                     Foreground="{StaticResource TextSecondary}"
+                     Visibility="Collapsed"
+                     VerticalAlignment="Top" />
+
             <!-- 本文 -->
             <TextBox x:Name="ResultBox"
-                     Grid.Row="1"
+                     Grid.Row="2"
                      Margin="0,6,0,0"
                      Text="翻訳中..."
                      TextWrapping="Wrap"
