@@ -8,12 +8,19 @@ namespace PlamoTranslatePopup.Services;
 /// <summary>
 /// 非公式 Google 翻訳 API (translate.googleapis.com, client=gtx) を使う翻訳サービス。
 /// llama-server 不要で高速だが、非公式 API のため予告なく使えなくなる可能性があり、
-/// テキストは Google へ送信される。
+/// テキストは Google へ送信される。レート制限 (429, IP 単位) が厳しいため
+/// リクエスト間隔の強制とリトライで緩和する。
 /// </summary>
 public sealed class GoogleTranslateService : IDisposable
 {
     /// <summary>1 リクエストに送れるおおよその上限(API 制限は ~5k 文字。URL 長も避けたいので余裕を取る)</summary>
     private const int MaxChunkChars = 1800;
+
+    /// <summary>連続リクエストで 429 を招かないよう空ける最低間隔</summary>
+    private static readonly TimeSpan MinInterval = TimeSpan.FromSeconds(2);
+
+    private static readonly object Gate = new();
+    private static DateTime _lastRequestUtc = DateTime.MinValue;
 
     private readonly HttpClient _http;
 
@@ -55,6 +62,19 @@ public sealed class GoogleTranslateService : IDisposable
         {
             try
             {
+                // 前回リクエストから最低間隔を空けて 429 (IP 単位のレート制限) を防ぐ
+                TimeSpan delay;
+                lock (Gate)
+                {
+                    var now = DateTime.UtcNow;
+                    var earliest = _lastRequestUtc + MinInterval;
+                    var start = earliest > now ? earliest : now;
+                    _lastRequestUtc = start;
+                    delay = start - now;
+                }
+                if (delay > TimeSpan.Zero)
+                    await Task.Delay(delay, ct);
+
                 var json = await _http.GetStringAsync(url, ct);
                 using var doc = JsonDocument.Parse(json);
 
@@ -67,10 +87,10 @@ public sealed class GoogleTranslateService : IDisposable
                 }
                 return sb.ToString();
             }
-            catch (HttpRequestException) when (attempt < 2)
+            catch (HttpRequestException) when (attempt < 3)
             {
-                // 429 や一時的なネットワークエラーは少し待って再試行
-                await Task.Delay(1500 * (attempt + 1), ct);
+                // 429 や一時的なネットワークエラーは待って再試行 (4s → 8s → 12s)
+                await Task.Delay(4000 * (attempt + 1), ct);
             }
         }
     }

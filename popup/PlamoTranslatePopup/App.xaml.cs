@@ -400,14 +400,20 @@ public partial class App : Application
                 var googleTranslated = await _googleTranslator.TranslateAsync(text, sourceLang, targetLang);
                 Log($"翻訳完了(Google): {googleTranslated[..Math.Min(50, googleTranslated.Length)]}");
                 popup.SetResult(googleTranslated);
+                return popup;
+            }
+            catch (System.Net.Http.HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+            {
+                // レート制限 (429, IP 単位) の場合はローカル PLaMo へ自動フォールバック
+                Log("Google翻訳レート制限(429) → PLaMo にフォールバック");
+                popup.SetDirectionText($"{sourceLang} → {targetLang} (PLaMo)");
             }
             catch (Exception ex)
             {
-                Log($"Google翻訳エラー: {ex.Message}");
-                popup.SetResult("Google 翻訳に失敗しました。\n" +
-                                "ネットワーク接続を確認するか、設定でエンジンを PLaMo に変更してください。");
+                // ネットワークエラー等もローカル PLaMo で翻訳を試みる(オフラインでも動くため)
+                Log($"Google翻訳エラー: {ex.Message} → PLaMo にフォールバック");
+                popup.SetDirectionText($"{sourceLang} → {targetLang} (PLaMo)");
             }
-            return popup;
         }
 
         var started = await _translator!.EnsureServerRunningAsync();

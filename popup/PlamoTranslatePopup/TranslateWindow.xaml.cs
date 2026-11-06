@@ -166,6 +166,10 @@ public partial class TranslateWindow : Window
     public void BeginStream() =>
         ResultBox.Text = string.Empty;
 
+    /// <summary>ヘッダーの言語方向表示を差し替える(フォールバック時の告知用)</summary>
+    public void SetDirectionText(string text) =>
+        DirectionText.Text = text;
+
     /// <summary>ストリーミングで訳文を追記する(位置は変更しない)</summary>
     public void AppendResult(string delta)
     {
