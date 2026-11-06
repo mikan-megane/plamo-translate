@@ -30,7 +30,38 @@ public partial class SettingsWindow : Window
         IdleTimeoutBox.Text = current.ServerIdleTimeoutSeconds.ToString();
         OpacitySlider.Value = Math.Clamp(current.PopupOpacity * 100, 30, 100);
         OpacityValueText.Text = $"{(int)OpacitySlider.Value}%";
+        SelectEngine(current.TranslationEngine);
     }
+
+    /// <summary>現在のエンジン設定をコンボボックスへ反映する</summary>
+    private void SelectEngine(string engine)
+    {
+        foreach (ComboBoxItem item in EngineCombo.Items)
+        {
+            if (Equals(item.Tag, engine))
+            {
+                EngineCombo.SelectedItem = item;
+                break;
+            }
+        }
+        UpdateEngineNote();
+    }
+
+    /// <summary>選択中エンジンの説明文を更新する</summary>
+    private void UpdateEngineNote()
+    {
+        var engine = SelectedEngine;
+        EngineNote.Text = engine == "google"
+            ? "Google: llama-server 不要で高速。ただし非公式 API のため予告なく使えなくなる可能性があり、テキストは Google に送信されます。"
+            : "PLaMo: オフラインで動作。プライバシーは安全。翻訳はストリーミング表示。";
+    }
+
+    /// <summary>選択中のエンジン ("plamo" / "google")</summary>
+    private string SelectedEngine =>
+        EngineCombo.SelectedItem is ComboBoxItem { Tag: { } tag } ? tag.ToString() ?? "plamo" : "plamo";
+
+    private void EngineCombo_SelectionChanged(object sender, SelectionChangedEventArgs e) =>
+        UpdateEngineNote();
 
     private void OpacitySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
@@ -120,6 +151,7 @@ public partial class SettingsWindow : Window
         settings.AutoCloseSeconds = seconds;
         settings.ServerIdleTimeoutSeconds = idleTimeout;
         settings.PopupOpacity = OpacitySlider.Value / 100.0;
+        settings.TranslationEngine = SelectedEngine;
 
         if (!_apply(settings))
         {

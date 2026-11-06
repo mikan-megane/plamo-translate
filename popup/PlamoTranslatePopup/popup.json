@@ -5,5 +5,6 @@
   "popupOpacity": 0.95,
   "hotkeyTranslate": "Ctrl+F7",
   "hotkeyOcr": "Ctrl+F9",
-  "serverIdleTimeoutSeconds": 300
+  "serverIdleTimeoutSeconds": 300,
+  "translationEngine": "plamo"
 }

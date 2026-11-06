@@ -39,6 +39,7 @@ public partial class App : Application
     private System.Windows.Forms.ContextMenuStrip? _trayMenu;
     private SettingsWindow? _settingsWindow;
     private LlamaTranslateService? _translator;
+    private readonly GoogleTranslateService _googleTranslator = new();
     private OcrService? _ocr;
     private bool _busy;
     private DateTime _serverLastUsedUtc = DateTime.UtcNow;
@@ -391,6 +392,24 @@ public partial class App : Application
             popup.SetSource(text);
         popup.ShowAtCursor(sourceLang, targetLang);
 
+        // Google 翻訳エンジン (非公式 API) の場合: llama-server 不要・一括表示
+        if (CurrentSettings.TranslationEngine.Equals("google", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var googleTranslated = await _googleTranslator.TranslateAsync(text, sourceLang, targetLang);
+                Log($"翻訳完了(Google): {googleTranslated[..Math.Min(50, googleTranslated.Length)]}");
+                popup.SetResult(googleTranslated);
+            }
+            catch (Exception ex)
+            {
+                Log($"Google翻訳エラー: {ex.Message}");
+                popup.SetResult("Google 翻訳に失敗しました。\n" +
+                                "ネットワーク接続を確認するか、設定でエンジンを PLaMo に変更してください。");
+            }
+            return popup;
+        }
+
         var started = await _translator!.EnsureServerRunningAsync();
         if (!started)
         {
@@ -527,6 +546,7 @@ public partial class App : Application
 
         _hotkey?.Dispose();
         _notifyIcon?.Dispose();
+        _googleTranslator.Dispose();
         base.OnExit(e);
     }
 }

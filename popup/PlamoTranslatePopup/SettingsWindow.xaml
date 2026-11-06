@@ -83,6 +83,28 @@
                        Text="95%" VerticalAlignment="Center" FontSize="12" />
         </Grid>
 
+        <TextBlock Text="翻訳エンジン"
+                   FontWeight="SemiBold" FontSize="13" Margin="0,18,0,8" />
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="130" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="翻訳に使う方式" VerticalAlignment="Center" />
+            <ComboBox x:Name="EngineCombo"
+                     Grid.Column="1"
+                     Height="28" Width="240" HorizontalAlignment="Left"
+                     VerticalContentAlignment="Center"
+                     SelectionChanged="EngineCombo_SelectionChanged">
+                <ComboBoxItem Tag="plamo" Content="PLaMo (ローカル llama-server)" />
+                <ComboBoxItem Tag="google" Content="Google 翻訳 (オンライン・高速)" />
+            </ComboBox>
+        </Grid>
+        <TextBlock x:Name="EngineNote"
+                   FontSize="11" Foreground="#808080" Margin="0,4,0,0"
+                   TextWrapping="Wrap"
+                   Text="PLaMo: オフラインで動作。プライバシーは安全。翻訳はストリーミング表示。" />
+
         <TextBlock Text="サーバー"
                    FontWeight="SemiBold" FontSize="13" Margin="0,18,0,8" />
         <Grid>

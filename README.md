@@ -50,10 +50,18 @@ OCR は Windows 内蔵の `Windows.Media.Ocr` を使用します(外部依存な
 トレイアイコンの右クリック → 「設定...」で開きます。保存すると
 `popup.json` に書き出され、ホットキーは即時再登録されます。
 
+- 翻訳エンジン: PLaMo (ローカル llama-server) / Google 翻訳 (オンライン・高速)
 - ショートカットキー(選択翻訳 / OCR翻訳): ボックスをクリックしてキーを押すと記録
 - 自動で閉じる秒数: 0 で自動的に閉じなくなる
 - 不透明度: 30〜100%(通常時の値。ホバー中は常に不透明)
 - 放置したら自動終了: llama-server を自動停止するまでの秒数(0 = 自動停止しない)
+
+**翻訳エンジンについて**
+
+| エンジン | 特徴 |
+|---|---|
+| PLaMo (既定) | ローカル推論。オフラインで動作しテキストを送信しない。コールド起動 ~7秒、翻訳 0.4〜0.8秒 |
+| Google 翻訳 | 非公式 API (`translate.googleapis.com`) を使用。llama-server 不要で高速(短文 ~0.1秒)。**テキストは Google に送信され、予告なく使えなくなる可能性があります** |
 
 ### 設定 (`popup.json`)
 
@@ -69,6 +77,7 @@ exe と同じフォルダに置くと既定値を上書きできます(dist 版�
 | `hotkeyTranslate` | `Ctrl+F7` | 選択テキスト翻訳のホットキー |
 | `hotkeyOcr` | `Ctrl+F9` | 画面OCR翻訳のホットキー |
 | `serverIdleTimeoutSeconds` | `300` | 未使用の llama-server を自動停止する秒数(0 = 無効) |
+| `translationEngine` | `"plamo"` | 翻訳エンジン (`"plamo"` / `"google"`)。`google` は非公式 API |
 
 キーの書式: `Ctrl+Alt+Shift+Win+キー名`(例: `Ctrl+Shift+T`, `Alt+F9`, `Ctrl+1`)。
 F12 と単独の修飾キーは登録できません。他アプリと競合するキーは保存時に拒否されます。
